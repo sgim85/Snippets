@@ -13,24 +13,28 @@ namespace DBMigration
                 System.Diagnostics.Stopwatch stopWatch = new System.Diagnostics.Stopwatch();
                 stopWatch.Start();
 
-                var qa = ConfigurationManager.ConnectionStrings["P1"].ConnectionString;
-                var preprod = ConfigurationManager.ConnectionStrings["P2"].ConnectionString;
-                using (SqlConnection conn1 = new SqlConnection(qa))
+                var dbSource = ConfigurationManager.ConnectionStrings["DBSource"].ConnectionString;
+                var dbDestination = ConfigurationManager.ConnectionStrings["DBDestination"].ConnectionString;
+
+                var sourceTable = ConfigurationManager.AppSettings["SourceTable"];
+                var destinationTable = ConfigurationManager.AppSettings["DestinationTable"];
+
+                using (SqlConnection conn1 = new SqlConnection(dbSource))
                 {
                     conn1.Open();
 
-                    using (SqlCommand command = new SqlCommand("select * from Table1", conn1))
+                    using (SqlCommand command = new SqlCommand($"select * from {sourceTable}", conn1))
                     {
                         command.CommandTimeout = 7200;
 
                         using (SqlDataReader rdr = command.ExecuteReader())
                         {
-                            using (SqlBulkCopy sbc = new SqlBulkCopy(preprod))
+                            using (SqlBulkCopy sbc = new SqlBulkCopy(dbDestination))
                             {
-                                sbc.BulkCopyTimeout = 7200;
+                                sbc.BulkCopyTimeout = 0; // unlimited
                                 sbc.BatchSize = 500;
 
-                                sbc.DestinationTableName = "Table2";
+                                sbc.DestinationTableName = $"{destinationTable}";
                                 sbc.WriteToServer(rdr);
                             }
                         }
