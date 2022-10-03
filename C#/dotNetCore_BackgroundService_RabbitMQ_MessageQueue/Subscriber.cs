@@ -1,6 +1,7 @@
 ﻿using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Caching.Memory;
 using Newtonsoft.Json;
 using PB.Email;
 using PB.Monitoring;
@@ -14,7 +15,7 @@ using System.Timers;
 
 namespace Email.API.MessageQueue
 {
-    public class Subscriber
+    public class Subscriber : IDisposable
     {
         ILogger<Subscriber> _logger;
         readonly IMetrics _metrics;
@@ -24,6 +25,7 @@ namespace Email.API.MessageQueue
         IServiceProvider _serviceProvider;
         Timer _unsentQueueTimer;
         Timer _reconnectTimer;
+        IMemoryCache _memoryCache;
         readonly object _clientLock = new object();
 
         public Subscriber(ILogger<Subscriber> logger, IMetrics metrics, MessageQueueSettings queueSettings, IConfiguration config, IServiceProvider sp)
@@ -35,18 +37,25 @@ namespace Email.API.MessageQueue
 
             _serviceProvider = sp;
 
-            _client = new MQClient(_queueSettings);
-            _unsentQueueTimer = new Timer();
-            _reconnectTimer = new Timer();
+            InitializeReconnectChecker(_logger);
+
+            _memoryCache = new MemoryCache(new MemoryCacheOptions());
         }
 
         public void Start()
         {
-            Subscribe();
+            try
+            {
+                _client = new MQClient(_queueSettings);
 
-            InitializeUnsentQueueCleaner(_logger);
+                Subscribe();
 
-            InitializeReconnectChecker(_logger);
+                InitializeUnsentQueueCleaner(_logger);
+            }
+            catch(Exception ex)
+            {
+                _logger.LogError(ex, $"Issue occured during subscriber start");
+            }
         }
 
         private void Subscribe()
@@ -61,6 +70,17 @@ namespace Email.API.MessageQueue
                 {
                     lock(_clientLock)
                     {
+                        if (_memoryCache.TryGetValue(msg.MessageId, out string key))
+                        {
+                            try
+                            {
+                                _logger.LogInformation($"Message already handled before: {msg.MessageId}");
+                                _client.Ack(msg.DeliveryTag);
+                            }
+                            catch (Exception) { }
+                            return;
+                        }
+
                         if (msg.Body == null)
                             _client.Drop(msg.DeliveryTag);
 
@@ -78,27 +98,51 @@ namespace Email.API.MessageQueue
 
                         if (success)
                         {
-                            _logger.LogInformation($"Message acknowledged and processed. MessageId: {msg.MessageId}");
-                            _client.Ack(msg.DeliveryTag);
+                            // If Ack fails, Message will be requeued again. So cache the message id on exception so we do not process it again.
+                            try
+                            {
+                                _logger.LogInformation($"Message acknowledged and processed. MessageId: {msg.MessageId}");
+                                _client.Ack(msg.DeliveryTag);
+                            }
+                            catch(Exception ex)
+                            {
+                                _logger.LogError(ex, $"Couldn't acknowledge MQ message: {msg.MessageId}. Message Id has been cached so we never reprocess it if it is requeued.");
+
+                                if (!_memoryCache.TryGetValue(msg.MessageId, out string a))
+                                    _memoryCache.Set(msg.MessageId, msg.MessageId, DateTimeOffset.UtcNow.AddHours(6));
+                            }
                         }
                         else
                         {
-                            if (DateTime.UtcNow < payload.EmailPayload.ExpiryUtc)
+                            try
+                            {
+                                _client.Ack(msg.DeliveryTag);
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogError(ex, $"Couldn't ack failed message {msg.MessageId}.");
+                                throw;
+                            }
+
+                            // Requeue up to msg expiry time or up until msg has been requeued 240+ times (2 hours....requeued every 30 sec, so 120 times an hour and 120 for 2 hours)
+                            if (DateTime.UtcNow < payload.EmailPayload.ExpiryUtc && msg.Count < 240)
                             {
                                 _logger.LogInformation($"Message Requeued due to failed processing. MessageId: {msg.MessageId}");
                                 var task = Task.Run(async () =>
                                 {
-                                    await Task.Delay(TimeSpan.FromMinutes(2));
+                                    await Task.Delay(TimeSpan.FromSeconds(30));
+                                    
                                     msg.Count++;
 
-                                    _client.Requeue(msg.DeliveryTag);
+                                    //_client.Requeue(msg.DeliveryTag);
+                                    var published = _client.Publish(_queueSettings.Exchange, msg);
+                                    if (!published)
+                                        _logger.LogInformation($"Failed to requeue message (MessageId {msg.MessageId})");
                                 });
                             }
                             else
                             {
                                 _logger.LogInformation($"Message sent to 'Unsent' queue '{_queueSettings.UnsentQueue}' because of expiry or due to {msg.Count} failed send attempts. MessageId: {msg.MessageId}");
-
-                                _client.Ack(msg.DeliveryTag);
 
                                 msg.RoutingKey = _queueSettings.GetRoutingKey(_queueSettings.UnsentQueue);
 
@@ -114,7 +158,7 @@ namespace Email.API.MessageQueue
                 }
                 catch(Exception ex)
                 {
-                    _logger.LogError(ex, "Error occured why processing MQ message: {msg.MessageId}");
+                    _logger.LogError(ex, $"Error occured while processing MQ message: {msg.MessageId}");
                 }
             };
 
@@ -133,7 +177,13 @@ namespace Email.API.MessageQueue
                     if (response.All(m => !m.EmailTriggered))
                         _metrics.ServiceCheck("Email", ServiceStatus.WARNING, new string[] { _config["Env"] });
 
+                    _metrics.Metric("Email", 0, new string[] { emailPayloadConfig.EmailPayload.EmailName, string.Join(",", response.Select(r => r.EmailAddress)) });
+
                     _logger.LogError($"Failed to email recipients: {string.Join(", ", response.Where(m => !m.EmailTriggered).Select(m => m.EmailAddress))}.");
+                }
+                else if (response.Any(m => m.EmailTriggered))
+                {
+                    _metrics.Metric("Email", 1, new string[] { emailPayloadConfig.EmailPayload.EmailName });
                 }
 
                 if (response.All(m => m.EmailSentSuccess))
@@ -144,6 +194,14 @@ namespace Email.API.MessageQueue
             }
             catch (Exception ex)
             {
+                _metrics.ServiceCheck("Email", ServiceStatus.CRITICAL, new string[] { _config["Env"] });
+                _logger.LogError(ex, $"Email attempt not successful. Will be re-queued for retry. {Environment.NewLine} {_emailManager.SanitizeMessageForLogging(JsonConvert.SerializeObject(emailPayloadConfig))}");
+
+                return false;
+
+                //*********************************************************************************************
+                // We were only requeuing Transient exceptions in this commented out block. Now we will requeue all types of exceptions.
+                /*
                 // If exception is Transient, message will be requeued for a retry. "IsTransientException" is inserted to Data in a Polly callback (see start.cs)
                 if (ex.Data.Contains("IsTransientException"))
                 {
@@ -152,6 +210,7 @@ namespace Email.API.MessageQueue
 
                 _metrics.ServiceCheck("Email", ServiceStatus.CRITICAL, new string[] { _config["Env"] });
                 _logger.LogError(ex, $"Email attempt not successful. Error not transient. {Environment.NewLine} {_emailManager.SanitizeMessageForLogging(JsonConvert.SerializeObject(emailPayloadConfig))}");
+                */
             }
             return true;
         }
@@ -159,7 +218,7 @@ namespace Email.API.MessageQueue
         private void InitializeUnsentQueueCleaner(ILogger<Subscriber> _logger)
         {
             // Empty out the Unsent queue for messages that are 4+ days old
-
+            _unsentQueueTimer = new Timer();
             _unsentQueueTimer.Interval = TimeSpan.FromMinutes(25).TotalMilliseconds;
             _unsentQueueTimer.Elapsed += (object o, ElapsedEventArgs args) =>
             {
@@ -206,10 +265,11 @@ namespace Email.API.MessageQueue
 
         /// <summary>
         /// RabbitMQ automatically reconnects if there is an unexpected failure.
-        /// In case the auto reconnect fails, handle it manually.
+        /// In case the auto reconnect fails, try to force re-connect.
         /// </summary>
         private void InitializeReconnectChecker(ILogger<Subscriber> _logger)
         {
+            _reconnectTimer = new Timer();
             _reconnectTimer.Interval = TimeSpan.FromMinutes(10).TotalMilliseconds;
             _reconnectTimer.Elapsed += (object o, ElapsedEventArgs args) =>
             {
@@ -217,13 +277,14 @@ namespace Email.API.MessageQueue
                 {
                     lock (_clientLock)
                     {
-                        if (!_client.IsAlive)
+                        if (_client == null || !_client.IsAlive)
                         {
-                            _logger.LogInformation("CONSUMER is not alive. Attempting to reconnect.");
+                            _logger.LogInformation("Reconnecting Consumer to MQ!");
 
-                            _client.Dispose();
-                            _client = new MQClient(_queueSettings);
-                            Subscribe();
+                            if (_client != null)
+                                _client.Dispose();
+                            _unsentQueueTimer.Dispose();
+                            Start();
                         }
                     }
                 }
@@ -237,9 +298,14 @@ namespace Email.API.MessageQueue
 
         public void Dispose()
         {
-            _unsentQueueTimer.Dispose();
-            _reconnectTimer.Dispose();
-            _client.Dispose();
+            if (_unsentQueueTimer != null)
+                _unsentQueueTimer.Dispose();
+
+            if (_reconnectTimer != null)
+                _reconnectTimer.Dispose();
+
+            if (_client != null)
+                _client.Dispose();
         }
     }
 }

@@ -4,16 +4,19 @@ using Newtonsoft.Json;
 using PB.Monitoring;
 using System;
 using System.Text;
+using System.Timers;
 
 namespace Email.API.MessageQueue
 {
-    public class Publisher
+    public class Publisher : IDisposable
     {
         ILogger<Publisher> _logger;
         readonly IMetrics _metrics;
         MQClient _client;
         MessageQueueSettings _queueSettings;
         IConfiguration _config;
+        Timer _reconnectTimer;
+        readonly object _clientLock = new object();
 
         public Publisher(ILogger<Publisher> logger, IMetrics metrics, MessageQueueSettings queueSettings, IConfiguration config)
         {
@@ -22,7 +25,16 @@ namespace Email.API.MessageQueue
             _queueSettings = queueSettings ?? throw new ArgumentNullException("MessageQueueSettings is null");
             _config = config ?? throw new ArgumentNullException("IConfiguration is null");
 
-            _client = new MQClient(_queueSettings);
+            try
+            {
+                _client = new MQClient(_queueSettings);
+            }
+            catch(Exception ex)
+            {
+                _logger.LogError(ex, $"Producer RMQ Client cannot be initialized");
+            }
+
+            InitializeReconnectChecker(_logger);
 
             // ************ TEST Publish *************
             //for (int i = 0; i < 10; i++)
@@ -54,26 +66,30 @@ namespace Email.API.MessageQueue
 
                 message.Body = Encoding.UTF8.GetBytes(json);
 
-                if (!_client.IsAlive)
+                lock (_clientLock)
                 {
-                    _logger.LogInformation("PRODUCER is not alive. Attempting to reconnect.");
+                    // If queue connection is down, handle request normally without requeueing. 
+                    // InitializeReconnectChecker() function will attempt to recover connection.
+                    if (_client == null || !_client.IsAlive)
+                    {
+                        _logger.LogInformation("PRODUCER is not alive. Send message directly without queueing.");
 
-                    _client.Dispose();
-                    _client = new MQClient(_queueSettings);
-                }
+                        return (false, message.MessageId);
+                    }
 
-                var isPublished = _client.Publish(_queueSettings.Exchange, message);
+                    var isPublished = _client.Publish(_queueSettings.Exchange, message);
 
-                if (isPublished)
-                {
-                    _logger.LogInformation($"Message published to Queue. MessageId {message.MessageId}");
-                    _metrics.Metric("PublishedEmailMessage", 1, new string[] { _config["Env"] });
-                }
-                else
-                {
-                    _logger.LogWarning($"Publish to Queue failed. MessageId {message.MessageId}. {Environment.NewLine} {json}");
-                    _metrics.Metric("PublishedEmailMessage", 0, new string[] { _config["Env"] });
-                    return (false, null);
+                    if (isPublished)
+                    {
+                        _logger.LogInformation($"Message published to Queue. MessageId {message.MessageId}");
+                        _metrics.Metric("PublishedEmailMessage", 1, new string[] { _config["Env"] });
+                    }
+                    else
+                    {
+                        _logger.LogWarning($"Publish to Queue failed. MessageId {message.MessageId}. {Environment.NewLine} {json}");
+                        _metrics.Metric("PublishedEmailMessage", 0, new string[] { _config["Env"] });
+                        return (false, null);
+                    }
                 }
 
                 return (true, message.MessageId);
@@ -85,9 +101,45 @@ namespace Email.API.MessageQueue
             }
         }
 
+        /// <summary>
+        /// RabbitMQ automatically reconnects if there is an unexpected failure.
+        /// In case the auto reconnect fails, try to force re-connect.
+        /// </summary>
+        private void InitializeReconnectChecker(ILogger<Publisher> _logger)
+        {
+            _reconnectTimer = new Timer();
+            _reconnectTimer.Interval = TimeSpan.FromMinutes(10).TotalMilliseconds;
+            _reconnectTimer.Elapsed += (object o, ElapsedEventArgs args) =>
+            {
+                try
+                {
+                    lock (_clientLock)
+                    {
+                        if (_client == null || !_client.IsAlive)
+                        {
+                            _logger.LogInformation("Reconnecting Producer to MQ!");
+
+                            if (_client != null)
+                                _client.Dispose();
+                            _client = new MQClient(_queueSettings);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "PRODUCER RECONNECT failed due to exception.");
+                }
+            };
+            _reconnectTimer.Enabled = true;
+        }
+
         public void Dispose()
         {
-            _client.Dispose();
+            if (_reconnectTimer != null)
+                _reconnectTimer.Dispose();
+
+            if (_client != null)
+                _client.Dispose();
         }
     }
 }

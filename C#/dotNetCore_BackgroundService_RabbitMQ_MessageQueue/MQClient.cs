@@ -37,7 +37,9 @@ namespace Email.API.MessageQueue
 
             _factory = new ConnectionFactory() { Uri = new Uri(queueSettings.Uri) };
             _factory.AutomaticRecoveryEnabled = true;
-            _factory.NetworkRecoveryInterval = TimeSpan.FromSeconds(10); // attempt recovery every 10 seconds if connection unexpectedly shutdowsn
+            _factory.NetworkRecoveryInterval = TimeSpan.FromSeconds(15); // attempt recovery every 15 seconds if connection unexpectedly shutdowsn
+            _factory.RequestedConnectionTimeout = TimeSpan.FromSeconds(10);
+            _factory.RequestedHeartbeat = TimeSpan.FromSeconds(60);
             _connection = _factory.CreateConnection();
             _channel = _connection.CreateModel();
 
@@ -59,7 +61,7 @@ namespace Email.API.MessageQueue
 
             _channel.ConfirmSelect(); // Enable publisher acknowledgements
 
-            //_channel.BasicQos(0, 1, false);
+            _channel.BasicQos(0, 10, false);
             _connection.ConnectionShutdown += OnConnectionShutdown;
 
             _publishStatus = new ConcurrentDictionary<ulong, bool>();
@@ -102,6 +104,7 @@ namespace Email.API.MessageQueue
             properties.Headers = new Dictionary<string, object>();
             properties.Headers.Add("Count", message.Count);
             properties.Timestamp = Extensions.DateTimeToUnixTimeStamp(message.TimestampUtc);
+            properties.Expiration = TimeSpan.FromHours(5).TotalMilliseconds.ToString();
 
             _channel.BasicPublish(exchange, message.RoutingKey, mandatory: true, basicProperties: properties, message.Body);
         }
@@ -177,17 +180,20 @@ namespace Email.API.MessageQueue
         {
             get
             {
-                return _connection != null && _connection.IsOpen;
+                return _connection != null 
+                    && _connection.IsOpen 
+                    && _channel != null
+                    && _channel.IsOpen;
             }
         }
 
         public void Dispose()
         {
             if (_channel != null && _channel.IsOpen)
-                _channel.Close();
+                _channel.Dispose();
 
             if (_connection != null && _connection.IsOpen)
-                _connection.Close();
+                _connection.Dispose();
         }
     }
 }
