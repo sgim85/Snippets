@@ -1,0 +1,403 @@
+{
+	"info": {
+		"_postman_id": "3dc3b2ed-c284-4fe2-922b-96da168539dc",
+		"name": "PublicSecure/Okta (CXP test env)",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "24627175"
+	},
+	"item": [
+		{
+			"name": "1. Login",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"\r",
+							"\r",
+							"var body = pm.response.json();\r",
+							"\r",
+							"if (body)\r",
+							"{\r",
+							"    var sessionToken = body.sessionToken;\r",
+							"    console.log(sessionToken);\r",
+							"    pm.globals.set('sessionToken', sessionToken);\r",
+							"}\r",
+							""
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"password\": \"Introd@85\",\r\n    \"username\": \"samson.gimui@ontario.ca\",\r\n    \"options\": {\r\n        \"warnBeforePasswordExpired\": true,\r\n        \"multiOptionalFactorEnroll\": true\r\n    }\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "https://test1.signin.ontario.ca/api/v1/authn",
+					"protocol": "https",
+					"host": [
+						"test1",
+						"signin",
+						"ontario",
+						"ca"
+					],
+					"path": [
+						"api",
+						"v1",
+						"authn"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "2. GetAuthorizationCode",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "https://test1.signin.ontario.ca/oauth2/aus184uex4Ryfr3uH5d7/v1/authorize?response_type=code&code_challenge=qjrzSW9gMiUgpUvqgEPE4_-8swvyCtfOVvg55o5S_es&code_challenge_method=S256&redirect_uri=http://localhost:3000/authorization-code/callback&client_id=0oa809j2ml5Y5TkF55d7&scope=openid profile email&state=randomvalue123&response_mode=form_post&sessionToken={{sessionToken}}",
+					"protocol": "https",
+					"host": [
+						"test1",
+						"signin",
+						"ontario",
+						"ca"
+					],
+					"path": [
+						"oauth2",
+						"aus184uex4Ryfr3uH5d7",
+						"v1",
+						"authorize"
+					],
+					"query": [
+						{
+							"key": "response_type",
+							"value": "code"
+						},
+						{
+							"key": "code_challenge",
+							"value": "qjrzSW9gMiUgpUvqgEPE4_-8swvyCtfOVvg55o5S_es"
+						},
+						{
+							"key": "code_challenge_method",
+							"value": "S256"
+						},
+						{
+							"key": "redirect_uri",
+							"value": "http://localhost:3000/authorization-code/callback"
+						},
+						{
+							"key": "client_id",
+							"value": "0oa809j2ml5Y5TkF55d7"
+						},
+						{
+							"key": "scope",
+							"value": "openid profile email"
+						},
+						{
+							"key": "state",
+							"value": "randomvalue123"
+						},
+						{
+							"key": "response_mode",
+							"value": "form_post"
+						},
+						{
+							"key": "sessionToken",
+							"value": "{{sessionToken}}"
+						}
+					]
+				},
+				"description": "This is a starting point for browser-based OpenID Connect flows such as the implicit and authorization code flows. This request authenticates the user and returns tokens along with an authorization grant to the client application as a part of the callback response.\n\nSource: [https://developer.okta.com/docs/reference/api/oidc/#authorize](https://developer.okta.com/docs/reference/api/oidc/#authorizeParams)\n\n[**Params**](https://developer.okta.com/docs/reference/api/oidc/#authorizeParams) **(see source for full list)**\n\n**code_challenge:** Obtained during either manual client registration or through the [Dynamic Client Registration API](https://developer.okta.com/docs/reference/api/oauth-clients/). It identifies the client and must match the value preregistered in Okta.\n\n**code_challenge_method:** Method used to derive the code challenge for [PKCE](https://developer.okta.com/docs/guides/implement-grant-type/authcodepkce/main/). Valid value: `S256`\n\n**response_type:** Any combination of `code`, `token` and `id_token`, or `none` [Early Access](https://developer.okta.com/docs/reference/releases-at-okta/) . The combination determines the [flow](https://developer.okta.com/docs/concepts/oauth-openid/#recommended-flow-by-application-type).\n\n**sessionToken:** Okta one-time session token. This allows an API-based user sign-in flow (rather than the Okta sign-in page). You can obtain session tokens through the [Authentication API](https://developer.okta.com/docs/reference/api/authn/).\n\n**state:** A value to be returned in the token. The client application can use it to remember the state of its interaction with the end user at the time of the authentication call. It can contain alphanumeric, comma, period, underscore, and hyphen characters. See [Parameter details](https://developer.okta.com/docs/reference/api/oidc/#parameter-details).\n\n**response_mode:** How the authorization response should be returned. [Valid values](https://developer.okta.com/docs/reference/api/oidc/#parameter-details): `fragment`, `form_post`, `query` or `okta_post_message`. If `id_token` or `token` is specified as the response type, then `query` isn't allowed as a response mode. Defaults to `fragment` in implicit and hybrid flows."
+			},
+			"response": []
+		},
+		{
+			"name": "3. GetToken",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/x-www-form-urlencoded",
+						"type": "text",
+						"disabled": true
+					},
+					{
+						"key": "Accept",
+						"value": "application/json",
+						"type": "text"
+					},
+					{
+						"key": "Authorization",
+						"value": "Basic MG9hN3dydng0MVppQkdPSTU1ZDc6MS1Ia1FwdjloX1Q4UkNNSXN0VFRVaGM2RThRNldRb3hmWTVsXzBXQg==",
+						"type": "text",
+						"disabled": true
+					}
+				],
+				"body": {
+					"mode": "urlencoded",
+					"urlencoded": [
+						{
+							"key": "grant_type",
+							"value": "authorization_code",
+							"type": "text"
+						},
+						{
+							"key": "client_id",
+							"value": "0oa809j2ml5Y5TkF55d7",
+							"type": "text"
+						},
+						{
+							"key": "code",
+							"value": "yj6qulRj0q9OeCKpXgkEuA85PwEiBpyKBM_qgVzBKKQ",
+							"type": "text"
+						},
+						{
+							"key": "code_verifier",
+							"value": "M25iVXpKU3puUjFaYWg3T1NDTDQtcW1ROUY5YXlwalNoc0hhakxifmZHag",
+							"type": "text"
+						},
+						{
+							"key": "redirect_uri",
+							"value": "http://localhost:3000/authorization-code/callback",
+							"type": "text"
+						},
+						{
+							"key": "client_secret",
+							"value": "1-HkQpv9h_T8RCMIstTTUhc6E8Q6WQoxfY5l_0WB",
+							"type": "text",
+							"disabled": true
+						}
+					]
+				},
+				"url": {
+					"raw": "https://test1.signin.ontario.ca/oauth2/aus184uex4Ryfr3uH5d7/v1/token",
+					"protocol": "https",
+					"host": [
+						"test1",
+						"signin",
+						"ontario",
+						"ca"
+					],
+					"path": [
+						"oauth2",
+						"aus184uex4Ryfr3uH5d7",
+						"v1",
+						"token"
+					]
+				},
+				"description": "This endpoint returns access tokens, ID tokens, and refresh tokens depending on the request parameters. For [password](https://developer.okta.com/docs/guides/implement-grant-type/ropassword/main/), [client credentials](https://developer.okta.com/docs/guides/implement-grant-type/clientcreds/main/), [saml2 assertion](https://developer.okta.com/docs/guides/implement-grant-type/saml2assert/main/) [Early Access](https://developer.okta.com/docs/reference/releases-at-okta/) , and [refresh token](https://developer.okta.com/docs/guides/refresh-tokens/) flows, calling `/token` is the only step of the flow. For the [authorization code](https://developer.okta.com/docs/guides/implement-grant-type/authcode/main/) flow, calling `/token` is the second step of the flow.\n\nSource: [https://developer.okta.com/docs/reference/api/oidc/#token](https://developer.okta.com/docs/reference/api/oidc/#token)\n\n**Params (See source for more info)**\n\n**code:** Required if `grant_type` is `authorization_code`. The value is what was returned from the [authorization endpoint](https://developer.okta.com/docs/reference/api/oidc/#authorize). The code has a lifetime of 300 seconds.\n\n**code_verififer:** Required if `grant_type` is `authorization_code` and `code_challenge` was specified in the original `/authorize` request. This value is the code verifier for [PKCE](https://developer.okta.com/docs/reference/api/oidc/#parameter-details). Okta uses it to recompute the `code_challenge` and verify if it matches the original `code_challenge` in the authorization request.\n\n**scope:** Required if `password` is the `grant_type`. This is a list of scopes that the client wants to be included in the access token. For the `refresh_token` grant type, these scopes have to be a subset of the scopes used to generate the refresh token in the first place."
+			},
+			"response": []
+		},
+		{
+			"name": "4. Logout",
+			"protocolProfileBehavior": {
+				"disableBodyPruning": true
+			},
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/x-www-form-urlencoded",
+						"type": "text",
+						"disabled": true
+					},
+					{
+						"key": "Accept",
+						"value": "application/json",
+						"type": "text"
+					},
+					{
+						"key": "Authorization",
+						"value": "Basic MG9hN3dydng0MVppQkdPSTU1ZDc6MS1Ia1FwdjloX1Q4UkNNSXN0VFRVaGM2RThRNldRb3hmWTVsXzBXQg==",
+						"type": "text",
+						"disabled": true
+					}
+				],
+				"body": {
+					"mode": "urlencoded",
+					"urlencoded": []
+				},
+				"url": {
+					"raw": "https://test1.signin.ontario.ca/oauth2/aus184uex4Ryfr3uH5d7/v1/logout?id_token_hint=eyJraWQiOiJPOW1vXzJNM21xSGNucXU5SXFWeW1iRlFBbURqd0hyeHphLS1DeEdMb3lRIiwiYWxnIjoiUlMyNTYifQ.eyJzdWIiOiIwMHU3eHFicXBlZXM1NElFdDVkNyIsIm5hbWUiOiJzYW1zb24uZ2ltdWlAb250YXJpby5jYSIsImVtYWlsIjoic2Ftc29uLmdpbXVpQG9udGFyaW8uY2EiLCJ2ZXIiOjEsImlzcyI6Imh0dHBzOi8vdGVzdDEuc2lnbmluLm9udGFyaW8uY2Evb2F1dGgyL2F1czE4NHVleDRSeWZyM3VINWQ3IiwiYXVkIjoiMG9hODA5ajJtbDVZNVRrRjU1ZDciLCJpYXQiOjE2NzQxNDIwMzQsImV4cCI6MTY3NDE0NTYzNCwianRpIjoiSUQub1l2R0FzUVY5c1V6a2hZVHN2QWNmQjZaYXpmXzM2MXRweVIxUTJDQWsxSSIsImFtciI6WyJwd2QiXSwiaWRwIjoiMDBvMTBwcjM0d1FtbURoTks1ZDciLCJwcmVmZXJyZWRfdXNlcm5hbWUiOiJzYW1zb24uZ2ltdWlAb250YXJpby5jYSIsImF1dGhfdGltZSI6MTY3NDE0MjAxMCwiYXRfaGFzaCI6IndvNnd3d0FOWlg5dkVVdXB4NnFoWlEiLCJncm91cHMiOlsiRXZlcnlvbmUiLCJPa3RhIENyZWRlbnRpYWxlZCBVc2VycyIsIlBBLUNYUCBbREVWXSBVc2VycyJdfQ.mYhRztKnd5095mHACneTQbE_lmVGEbGg3nOoFYEcNNwZdPpgB45PLzGs4_dWlMNQmtcg1l-mcYgIJwDdA-WP-QMDgTOoCzPIuLOS72LOfkOsaPgrwaQ3acAC-B225iBsOCYDFS2fNTB7LSPo2at_oApgQrAbxgs1w8D9nGqS7uBbVN-39PP9S0CwVRuH0YS6r8W2mh5ItsWc0LZE6O2YtIZO6oRdL96J3-qfbzXF0QbCX0Qh1ppRKwB7VDW6jB2B_2LiDJrDVnHLZEEowT8FIchgrUp6f8tDBe6OOZZFYAgZ7zRiKorJF3PYSdFHLvqZjXpe7dM1YuigDFgfqucXzQ&post_logout_redirect_uri=http://localhost:3000",
+					"protocol": "https",
+					"host": [
+						"test1",
+						"signin",
+						"ontario",
+						"ca"
+					],
+					"path": [
+						"oauth2",
+						"aus184uex4Ryfr3uH5d7",
+						"v1",
+						"logout"
+					],
+					"query": [
+						{
+							"key": "id_token_hint",
+							"value": "eyJraWQiOiJPOW1vXzJNM21xSGNucXU5SXFWeW1iRlFBbURqd0hyeHphLS1DeEdMb3lRIiwiYWxnIjoiUlMyNTYifQ.eyJzdWIiOiIwMHU3eHFicXBlZXM1NElFdDVkNyIsIm5hbWUiOiJzYW1zb24uZ2ltdWlAb250YXJpby5jYSIsImVtYWlsIjoic2Ftc29uLmdpbXVpQG9udGFyaW8uY2EiLCJ2ZXIiOjEsImlzcyI6Imh0dHBzOi8vdGVzdDEuc2lnbmluLm9udGFyaW8uY2Evb2F1dGgyL2F1czE4NHVleDRSeWZyM3VINWQ3IiwiYXVkIjoiMG9hODA5ajJtbDVZNVRrRjU1ZDciLCJpYXQiOjE2NzQxNDIwMzQsImV4cCI6MTY3NDE0NTYzNCwianRpIjoiSUQub1l2R0FzUVY5c1V6a2hZVHN2QWNmQjZaYXpmXzM2MXRweVIxUTJDQWsxSSIsImFtciI6WyJwd2QiXSwiaWRwIjoiMDBvMTBwcjM0d1FtbURoTks1ZDciLCJwcmVmZXJyZWRfdXNlcm5hbWUiOiJzYW1zb24uZ2ltdWlAb250YXJpby5jYSIsImF1dGhfdGltZSI6MTY3NDE0MjAxMCwiYXRfaGFzaCI6IndvNnd3d0FOWlg5dkVVdXB4NnFoWlEiLCJncm91cHMiOlsiRXZlcnlvbmUiLCJPa3RhIENyZWRlbnRpYWxlZCBVc2VycyIsIlBBLUNYUCBbREVWXSBVc2VycyJdfQ.mYhRztKnd5095mHACneTQbE_lmVGEbGg3nOoFYEcNNwZdPpgB45PLzGs4_dWlMNQmtcg1l-mcYgIJwDdA-WP-QMDgTOoCzPIuLOS72LOfkOsaPgrwaQ3acAC-B225iBsOCYDFS2fNTB7LSPo2at_oApgQrAbxgs1w8D9nGqS7uBbVN-39PP9S0CwVRuH0YS6r8W2mh5ItsWc0LZE6O2YtIZO6oRdL96J3-qfbzXF0QbCX0Qh1ppRKwB7VDW6jB2B_2LiDJrDVnHLZEEowT8FIchgrUp6f8tDBe6OOZZFYAgZ7zRiKorJF3PYSdFHLvqZjXpe7dM1YuigDFgfqucXzQ"
+						},
+						{
+							"key": "post_logout_redirect_uri",
+							"value": "http://localhost:3000"
+						},
+						{
+							"key": "state",
+							"value": "randomvalue123",
+							"disabled": true
+						}
+					]
+				},
+				"description": "Logout endpoint (works via browser logout button).\n\nSource: [https://developer.okta.com/docs/reference/api/oidc/#logout](https://developer.okta.com/docs/reference/api/oidc/#logout)\n\n- id_token_hint: A valid ID token with a subject that matches the current session\n    \n\n- post_logout_redirect_uri: Location to redirect to after the logout is performed. It must match the value preregistered in Okta during client registration.\n    \n\n- state: An optional value that is returned as a query parameter during the redirect to the `post_logout_redirect_uri`."
+			},
+			"response": []
+		},
+		{
+			"name": "5. Revoke Access Token [Forces client to get new access token]",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/x-www-form-urlencoded",
+						"type": "text",
+						"disabled": true
+					},
+					{
+						"key": "Accept",
+						"value": "application/json",
+						"type": "text"
+					},
+					{
+						"key": "Authorization",
+						"value": "Basic MG9hN3dydng0MVppQkdPSTU1ZDc6MS1Ia1FwdjloX1Q4UkNNSXN0VFRVaGM2RThRNldRb3hmWTVsXzBXQg==",
+						"type": "text",
+						"disabled": true
+					}
+				],
+				"body": {
+					"mode": "urlencoded",
+					"urlencoded": [
+						{
+							"key": "token",
+							"value": "eyJraWQiOiJPOW1vXzJNM21xSGNucXU5SXFWeW1iRlFBbURqd0hyeHphLS1DeEdMb3lRIiwiYWxnIjoiUlMyNTYifQ.eyJ2ZXIiOjEsImp0aSI6IkFULlh3YTNzMExmLXNJLTVIc203b3NSSkdxeW41QnVBNVN4ZTRxajFFaklxY0UiLCJpc3MiOiJodHRwczovL3Rlc3QxLnNpZ25pbi5vbnRhcmlvLmNhL29hdXRoMi9hdXMxODR1ZXg0UnlmcjN1SDVkNyIsImF1ZCI6ImFwaTovL2RlZmF1bHQiLCJpYXQiOjE2NzQxNDIwMzQsImV4cCI6MTY3NDE0NTYzNCwiY2lkIjoiMG9hODA5ajJtbDVZNVRrRjU1ZDciLCJ1aWQiOiIwMHU3eHFicXBlZXM1NElFdDVkNyIsInNjcCI6WyJlbWFpbCIsInByb2ZpbGUiLCJvcGVuaWQiXSwiYXV0aF90aW1lIjoxNjc0MTQyMDEwLCJzdWIiOiIwMHU3eHFicXBlZXM1NElFdDVkNyJ9.agzBiRvwGc44JWUC3s75Xc9p_BGvVAa04fnfl85_7fyi2Nw-WMsoyaYnaD6JNH7lGzMmkD0PK6YaEQM31vWrhW8teIqQqtQfXn77KIN5c3uZaKZACQcOFBadl2JFCMMUkV3sLoyvQxx9xNGgM203OCxQr9ds-LBSksYTDf0A3qoWG8GsV-pcZcmzhk5gwYO5jk5V0ckLDgc2zeDrWu3ehKHzvbD1Yj_BT_nuXbN0Nf9sbb0EFNvpegcRZL9xxDLEaDp8vUw2aCqBfUU0FFL5keHfFwgWXLNXCgLGOTRvKV9M2HuZFmv2iEBcziiAJTpzHG5ALcsP-4yx5_0FJd-iwg",
+							"type": "text"
+						},
+						{
+							"key": "client_id",
+							"value": "0oa809j2ml5Y5TkF55d7",
+							"type": "text"
+						}
+					]
+				},
+				"url": {
+					"raw": "https://test1.signin.ontario.ca/oauth2/aus184uex4Ryfr3uH5d7/v1/revoke",
+					"protocol": "https",
+					"host": [
+						"test1",
+						"signin",
+						"ontario",
+						"ca"
+					],
+					"path": [
+						"oauth2",
+						"aus184uex4Ryfr3uH5d7",
+						"v1",
+						"revoke"
+					],
+					"query": [
+						{
+							"key": "token",
+							"value": "eyJraWQiOiJPOW1vXzJNM21xSGNucXU5SXFWeW1iRlFBbURqd0hyeHphLS1DeEdMb3lRIiwiYWxnIjoiUlMyNTYifQ.eyJ2ZXIiOjEsImp0aSI6IkFULlh3YTNzMExmLXNJLTVIc203b3NSSkdxeW41QnVBNVN4ZTRxajFFaklxY0UiLCJpc3MiOiJodHRwczovL3Rlc3QxLnNpZ25pbi5vbnRhcmlvLmNhL29hdXRoMi9hdXMxODR1ZXg0UnlmcjN1SDVkNyIsImF1ZCI6ImFwaTovL2RlZmF1bHQiLCJpYXQiOjE2NzQxNDIwMzQsImV4cCI6MTY3NDE0NTYzNCwiY2lkIjoiMG9hODA5ajJtbDVZNVRrRjU1ZDciLCJ1aWQiOiIwMHU3eHFicXBlZXM1NElFdDVkNyIsInNjcCI6WyJlbWFpbCIsInByb2ZpbGUiLCJvcGVuaWQiXSwiYXV0aF90aW1lIjoxNjc0MTQyMDEwLCJzdWIiOiIwMHU3eHFicXBlZXM1NElFdDVkNyJ9.agzBiRvwGc44JWUC3s75Xc9p_BGvVAa04fnfl85_7fyi2Nw-WMsoyaYnaD6JNH7lGzMmkD0PK6YaEQM31vWrhW8teIqQqtQfXn77KIN5c3uZaKZACQcOFBadl2JFCMMUkV3sLoyvQxx9xNGgM203OCxQr9ds-LBSksYTDf0A3qoWG8GsV-pcZcmzhk5gwYO5jk5V0ckLDgc2zeDrWu3ehKHzvbD1Yj_BT_nuXbN0Nf9sbb0EFNvpegcRZL9xxDLEaDp8vUw2aCqBfUU0FFL5keHfFwgWXLNXCgLGOTRvKV9M2HuZFmv2iEBcziiAJTpzHG5ALcsP-4yx5_0FJd-iwg",
+							"disabled": true
+						},
+						{
+							"key": "token_type_hint",
+							"value": "",
+							"disabled": true
+						},
+						{
+							"key": "state",
+							"value": "randomvalue123",
+							"disabled": true
+						}
+					]
+				},
+				"description": "The API takes an access or refresh token and revokes it. Revoked tokens are considered inactive at the introspection endpoint. A client may only revoke its own tokens. See [Revoke tokens](https://developer.okta.com/docs/guides/revoke-tokens/) for more information.\n\n**Revoke an access token or a refresh token**\n\nThe token revocation endpoint can revoke either access or refresh tokens. Revoking an access token doesn't revoke the associated refresh token. However, revoking a refresh token does revoke the associated access token.\n\n**Revoke only the access token**\n\nRevoking only the access token effectively forces the client to use the refresh token in a request to retrieve a new access token. This could be useful if, for example, you have changed a user's data, and you want this information to be reflected in a new access token.\n\nSource: [https://developer.okta.com/docs/reference/api/oidc/#revoke](https://developer.okta.com/docs/reference/api/oidc/#revoke)\n\n- token: An access or refresh token.\n- clien_id: Id of client\n- token_type_hint: A hint of the type of token. Valid values: access_token, refresh_token, and device_secret"
+			},
+			"response": []
+		},
+		{
+			"name": "6. Introspect",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/x-www-form-urlencoded",
+						"type": "text",
+						"disabled": true
+					},
+					{
+						"key": "Accept",
+						"value": "application/json",
+						"type": "text"
+					},
+					{
+						"key": "Authorization",
+						"value": "Basic MG9hN3dydng0MVppQkdPSTU1ZDc6MS1Ia1FwdjloX1Q4UkNNSXN0VFRVaGM2RThRNldRb3hmWTVsXzBXQg==",
+						"type": "text",
+						"disabled": true
+					}
+				],
+				"body": {
+					"mode": "urlencoded",
+					"urlencoded": [
+						{
+							"key": "token",
+							"value": "eyJraWQiOiJPOW1vXzJNM21xSGNucXU5SXFWeW1iRlFBbURqd0hyeHphLS1DeEdMb3lRIiwiYWxnIjoiUlMyNTYifQ.eyJ2ZXIiOjEsImp0aSI6IkFULlh3YTNzMExmLXNJLTVIc203b3NSSkdxeW41QnVBNVN4ZTRxajFFaklxY0UiLCJpc3MiOiJodHRwczovL3Rlc3QxLnNpZ25pbi5vbnRhcmlvLmNhL29hdXRoMi9hdXMxODR1ZXg0UnlmcjN1SDVkNyIsImF1ZCI6ImFwaTovL2RlZmF1bHQiLCJpYXQiOjE2NzQxNDIwMzQsImV4cCI6MTY3NDE0NTYzNCwiY2lkIjoiMG9hODA5ajJtbDVZNVRrRjU1ZDciLCJ1aWQiOiIwMHU3eHFicXBlZXM1NElFdDVkNyIsInNjcCI6WyJlbWFpbCIsInByb2ZpbGUiLCJvcGVuaWQiXSwiYXV0aF90aW1lIjoxNjc0MTQyMDEwLCJzdWIiOiIwMHU3eHFicXBlZXM1NElFdDVkNyJ9.agzBiRvwGc44JWUC3s75Xc9p_BGvVAa04fnfl85_7fyi2Nw-WMsoyaYnaD6JNH7lGzMmkD0PK6YaEQM31vWrhW8teIqQqtQfXn77KIN5c3uZaKZACQcOFBadl2JFCMMUkV3sLoyvQxx9xNGgM203OCxQr9ds-LBSksYTDf0A3qoWG8GsV-pcZcmzhk5gwYO5jk5V0ckLDgc2zeDrWu3ehKHzvbD1Yj_BT_nuXbN0Nf9sbb0EFNvpegcRZL9xxDLEaDp8vUw2aCqBfUU0FFL5keHfFwgWXLNXCgLGOTRvKV9M2HuZFmv2iEBcziiAJTpzHG5ALcsP-4yx5_0FJd-iwg",
+							"type": "text"
+						},
+						{
+							"key": "client_id",
+							"value": "0oa809j2ml5Y5TkF55d7",
+							"type": "text"
+						}
+					]
+				},
+				"url": {
+					"raw": "https://test1.signin.ontario.ca/oauth2/aus184uex4Ryfr3uH5d7/v1/introspect",
+					"protocol": "https",
+					"host": [
+						"test1",
+						"signin",
+						"ontario",
+						"ca"
+					],
+					"path": [
+						"oauth2",
+						"aus184uex4Ryfr3uH5d7",
+						"v1",
+						"introspect"
+					]
+				},
+				"description": "This endpoint takes an access token, ID token, refresh token, or device secret and returns a boolean that indicates whether it is active. If the token is active, additional data about the token is also returned. If the token is invalid, expired, or revoked, it is considered inactive.\n\nBe sure that you are using the `/introspect` endpoint of the same authorization server that you used to create the token.\n\nSource: [https://developer.okta.com/docs/reference/api/oidc/#introspect](https://developer.okta.com/docs/reference/api/oidc/#introspect)\n\n- token: An access or refresh token.\n- clien_id: Id of client\n- token_type_hint: Indicates the type of token being passed. Valid values: access_token, id_token, refresh_token, and device_secret"
+			},
+			"response": []
+		}
+	]
+}
