@@ -1,147 +1,158 @@
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Hosting;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.OpenApi.Models;
-using PB.Logging;
-using PB.Email;
-using PB.Monitoring;
-using System;
-using System.IO;
-using Email.API.MessageQueue;
-using Polly;
-using Polly.Extensions.Http;
-using Polly.Timeout;
-using System.Net.Http;
-using System.Threading.Tasks;
 
-namespace Email.API
+// ****** Begin: Swagger Config **********
+// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen(options =>
 {
-    public class Startup
+    var request = new HttpContextAccessor().HttpContext?.Request;
+    if (request != null)
     {
-        public Startup(IConfiguration configuration)
+        var scheme = request.Host.Host.Contains("localhost", StringComparison.OrdinalIgnoreCase) ? "http" : "https";
+        var urlBuilder = new UriBuilder(scheme, request.Host.Host, request.Host.Port ?? -1);
+        var templatesUrl = urlBuilder.Uri.AbsoluteUri + "templates";
+        var errorMappingUrl = urlBuilder.Uri.AbsoluteUri + "errormapping";
+        options.SwaggerDoc("v1", new OpenApiInfo
         {
-            Configuration = configuration;
-        }
-
-        public IConfiguration Configuration { get; }
-
-        // This method gets called by the runtime. Use this method to add services to the container.
-        public void ConfigureServices(IServiceCollection services)
-        {
-            services.AddControllers();
-            services.AddPorterBusinessLogging(Configuration.GetSection("PorterBusinessLogging"));
-            services.AddEmailOptions(Configuration.GetSection("EmailOptions"));
-            services.AddPorterBusinessMonitoring("Email.API");
-
-			// *********************************** POLLY **************************************************
-            IAsyncPolicy<HttpResponseMessage> httpWaitAndRetryPolicy =
-                 HttpPolicyExtensions
-                        .HandleTransientHttpError()
-                        .Or<TimeoutRejectedException>()
-                        .WaitAndRetryAsync(3, retryAttempt => TimeSpan.FromSeconds(Math.Pow(2, retryAttempt)),
-                            onRetry: (result, timeSpan, retryAttempt, context) =>
-                            {
-                                // stuff to do during retry
-                            });
-
-            IAsyncPolicy<HttpResponseMessage> fallbackPolicy =
-                Policy.Handle<Exception>().OrResult<HttpResponseMessage>(r => !r.IsSuccessStatusCode)
-                    .FallbackAsync(
-                        fallbackAction: (response, context, cancellationToken) =>
-                        {
-                            if (response.Exception != null)
-                                throw response.Exception;
-                            else
-                                throw new Exception($"Exception occured with StatusCode {response.Result.StatusCode}. URL {response.Result.RequestMessage.RequestUri}");
-                        },
-                        onFallbackAsync: (response, context) =>
-                        {
-                            if (response.Exception != null && response.Exception.Data != null)
-                                response.Exception.Data.Add("IsTransientException", true);
-                            return Task.CompletedTask;
-                        });
-
-            IAsyncPolicy<HttpResponseMessage> httpRetryAndFallbackWrapper = Policy.WrapAsync(fallbackPolicy, httpWaitAndRetryPolicy);
-
-            services.AddHttpClient<EmailManager, EmailManager>()
-            .AddPolicyHandler(httpRetryAndFallbackWrapper)
-            .AddPolicyHandler((timeout) => Policy.TimeoutAsync<HttpResponseMessage>(TimeSpan.FromSeconds(30)));
-
-            // *******This code replaced by "httpRetryAndFallbackWrapper PolicyHandler" above*******
-            // HttpClient for 3rd party email service
-            //services.AddHttpClient<EmailManager, EmailManager>()
-            //    .AddPolicyHandler((service, request) =>
-            //        HttpPolicyExtensions
-            //            .HandleTransientHttpError()
-            //            .Or<TimeoutRejectedException>()
-            //            .WaitAndRetryAsync(3, retryAttempt => TimeSpan.FromSeconds(Math.Pow(2, retryAttempt)),
-            //                onRetry: (result, timeSpan, retryAttempt, context) => 
-            //                {
-            //                    result.Exception.Data.Add("IsTransientException", true);
-            //                    // Log info about retry attempt (Can't access ILogger in startup.cs)
-            //                }));
-
-            // Named HttpClient: Used in controller to re-route email
-            services.AddHttpClient("EmailRerouteClient")
-                .AddPolicyHandler((service, request) =>
-                    HttpPolicyExtensions
-                        .HandleTransientHttpError()
-                        .Or<TimeoutRejectedException>()
-                        .WaitAndRetryAsync(5, retryAttempt => TimeSpan.FromSeconds(Math.Pow(2, retryAttempt))));
-						
-			// *********************************** POLLY **************************************************
-
-            services.AddSingleton<Publisher, Publisher>();
-            services.AddSingleton<Subscriber, Subscriber>();
-            services.AddSingleton<IHostedService, MQBackgroundService>();
-            services.AddMemoryCache();
-
-            var messageQueueSettings = new MessageQueueSettings();
-            Configuration.GetSection("MessageQueueSettings").Bind(messageQueueSettings);
-            services.AddSingleton(h => messageQueueSettings);
-
-            // Register the Swagger generator, defining 1 or more Swagger documents
-            services.AddSwaggerGen(c =>
-            {
-                c.SwaggerDoc("v1", new OpenApiInfo
-                {
-                    Title = "Email API",
-                    Version = "v1",
-                    Description = "Porter Email Web API"
-                });
-
-                c.IncludeXmlComments(Path.Combine(AppContext.BaseDirectory, "Email.Api.xml"));
-                c.IncludeXmlComments(Path.Combine(AppContext.BaseDirectory, "PB.Email.xml"));
-            });
-        }
-
-        // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
-        public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
-        {
-            if (env.IsDevelopment())
-            {
-                app.UseDeveloperExceptionPage();
-            }
-
-            app.UseHttpsRedirection();
-
-            app.UseRouting();
-
-            app.UseAuthorization();
-
-            app.UseEndpoints(endpoints =>
-            {
-                endpoints.MapControllers();
-            });
-
-            //Enable middleware to serve generated Swagger as a JSON endpoint.
-            app.UseSwagger();
-            app.UseSwaggerUI(c =>
-            {
-                c.SwaggerEndpoint("v1/swagger.json", "Email.API V1");
-            });
-        }
+            Version = "v1",
+            Title = "Profile API",
+            Description = $"Access to customer profile data for the CXP. {(new string[] { "Development", "dev" }.Contains(Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT")) ? "View and edit message templates at [" + templatesUrl + "](" + templatesUrl + ")<br>View all the error codes and their mapping at [" + errorMappingUrl + "](" + errorMappingUrl + ")" : string.Empty)}"
+        });
     }
+
+    #region Swagger Auth
+    options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme()
+    {
+        Name = "Authorization",
+        Type = SecuritySchemeType.ApiKey,
+        Scheme = "Bearer",
+        BearerFormat = "JWT",
+        In = ParameterLocation.Header
+    });
+    options.AddSecurityRequirement(new OpenApiSecurityRequirement
+    {
+        {
+            new OpenApiSecurityScheme
+            {
+                Reference = new OpenApiReference
+                {
+                    Type = ReferenceType.SecurityScheme,
+                    Id = "Bearer"
+                }
+            },
+            new string[] {}
+        }
+    });
+    #endregion
+
+    var xmlFilename = $"{Assembly.GetExecutingAssembly().GetName().Name}.xml";
+    options.IncludeXmlComments(Path.Combine(AppContext.BaseDirectory, xmlFilename));
+});
+
+// More code .....
+
+// disable swagger in prod
+if (!app.Environment.IsProduction())
+{
+    app.UseSwagger(c =>
+    {
+        c.PreSerializeFilters.Add((swaggerDoc, httpRequest) =>
+        {
+            if (!app.Environment.IsDevelopment())
+            {
+                swaggerDoc.Servers = new List<OpenApiServer> { new OpenApiServer { Url = $"https://{httpRequest.Host.Value}/cxp-profile-api" } };
+            }
+        });
+    });
+    app.UseSwaggerUI();
 }
+// ****** End: Swagger Config **********
+
+// ****** Begin: HealthCheck Config **********
+builder.Services.AddHealthChecks()
+    .AddDbContextCheck<CXPDBContext>("healthcheck_db",
+        tags: new[] { "db" },
+        customTestQuery: (a, b) =>
+        {
+            return a.Lookups.AnyAsync(p => p.LookupId > 0);
+        });
+// ****** End: HealthCheck Config **********
+
+// ****** Begin: Register Action filters and Json options **********
+// Register ActionFilter with .AddControllers
+builder.Services.AddScoped<ActionFilter>();
+builder.Services.AddControllers(options =>
+{
+    options.Filters.AddService<ActionFilter>();
+    options.EnableEndpointRouting = false; // needed for web app controllers (e.g. TemplatesController)
+})
+    .AddJsonOptions(options =>
+    {
+        options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
+        options.JsonSerializerOptions.PropertyNameCaseInsensitive = true;
+        options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
+        options.JsonSerializerOptions.MaxDepth = 2;
+    })
+    .AddNewtonsoftJson(options => { });
+
+builder.Services.AddCors(options =>
+{
+    var CORS_Origins = Environment.GetEnvironmentVariable("CORS_Origins");
+    CORS_Origins = string.IsNullOrEmpty(CORS_Origins) ? builder.Configuration.GetValue<string>("CORS:Origins") : CORS_Origins;
+
+    options.AddPolicy(name: CORS_AllowSpecificOrigins,
+                      policy =>
+                      {
+                          policy.WithOrigins(CORS_Origins.Split(","))
+                          .AllowAnyHeader()
+                          .AllowAnyMethod();
+                      });
+});
+
+// More code....
+
+app.UseCors(CORS_AllowSpecificOrigins);
+// ****** End: Register Action filters, Json options, and CORS **********
+
+// ****** Begin: Dev env configs **********
+if (app.Environment.IsDevelopment())
+{
+    IdentityModelEventSource.ShowPII = true;
+
+    app.UseDeveloperExceptionPage();
+    app.UseMigrationsEndPoint();
+}
+// ****** End: Dev env configs **********
+
+// ****** Begin: Application Insights configs **********
+builder.Services.AddApplicationInsightsTelemetry();
+builder.Services.AddApplicationInsightsKubernetesEnricher(); // Add this line if running in Kubernetes, e.g. AKS
+builder.Services.AddSingleton<ITelemetryInitializer, CustomPropertiesTelemetryInitializer>(); // See ApplicationInsightsMiddleware.cs for implemented Initializer 
+
+// Enable custom telemetry for HTTP request dependencies in application insights
+if (enableDetailedData)
+{
+    // Middleware classes defined in ApplicationInsightsMiddleware.cs file in the root folder	
+    builder.Services.AddSingleton<ITelemetryInitializer, DependencyTelemetryInitializer>();
+}
+
+// Add App Insights to the list of ILogger providers
+builder.Logging.AddApplicationInsights();
+builder.Logging.AddFilter<ApplicationInsightsLoggerProvider>("CXP-renewal-api", LogLevel.Warning);
+
+// More code....
+
+// Enable custom telemetry for HTTP requests in application insights
+if (enableDetailedData)
+{
+    // This block is necessary for the app insights telemetry middleware below to work
+    app.Use(async (context, next) =>
+    {
+        context.Request.EnableBuffering();
+        await next();
+    });
+
+    // Middleware classes defined in ApplicationInsightsMiddleware.cs file in the root folder	
+    app.UseMiddleware<RequestTelemetryMiddleware>();
+    app.UseMiddleware<ResponseTelemetryMiddleware>();
+}
+// ****** End: Application Insights configs **********
